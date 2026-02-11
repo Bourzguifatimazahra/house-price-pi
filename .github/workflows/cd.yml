@@ -1,200 +1,55 @@
- name: CD - Train & Export
+ name: CI - Quick Check
 
 on:
   push:
+    branches: [ main, develop ]
+  pull_request:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
-  train:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
       - name: Install
-        run: pip install pandas numpy lightgbm scikit-learn joblib openpyxl
-      
-      - name: Setup folders
-        run: mkdir -p models predictions exports/par_ville comparaisons metrics_reports
-      
-      - name: Train LightGBM Quantile
         run: |
-          python -c "
+          pip install pandas numpy lightgbm
+      
+      - name: Test dataset
+        run: |
+          if [ -f "dataset.csv" ]; then
+            echo "✅ dataset.csv trouvé"
+            python -c "import pandas as pd; df=pd.read_csv('dataset.csv'); print(f'📊 {len(df)} lignes, {df.city.nunique()} villes')"
+          else
+            echo "⚠️ Pas de dataset, création..."
+            python -c "
 import pandas as pd
 import numpy as np
+cities=['SEATTLE','BELLEVUE','REDMOND','KIRKLAND','RENTON']
+df=pd.DataFrame({
+    'sale_price': np.random.randint(300000, 1500000, 100),
+    'city': np.random.choice(cities, 100),
+    'sqft': np.random.randint(1000, 3500, 100),
+    'year_built': np.random.randint(1970, 2020, 100)
+})
+df.to_csv('dataset.csv', index=False)
+print('✅ dataset.csv créé')
+            "
+          fi
+      
+      - name: Test LightGBM
+        run: |
+          python -c "
 import lightgbm as lgb
-import joblib
-from datetime import datetime
-
-# Dataset
-if not pd.io.common.file_exists('dataset.csv'):
-    print('📊 Génération dataset...')
-    cities = ['SEATTLE','BELLEVUE','REDMOND','KIRKLAND','RENTON','SAMMAMISH',
-              'ISSAQUAH','MERCER ISLAND','MEDINA','BOTHELL','SHORELINE','KENMORE',
-              'WOODINVILLE','AUBURN','FEDERAL WAY','KENT','DES MOINES','SEATAC',
-              'TUKWILA','SNOQUALMIE','NORTH BEND','CARNATION','DUVALL','ENUMCLAW',
-              'BLACK DIAMOND','MAPLE VALLEY','COVINGTON','ALGONA','BURIEN',
-              'NORMANDY PARK','PACIFIC','SKYKOMISH','CLYDE HILL','YARROW POINT',
-              'HUNTS POINT','BEAUX ARTS','LAKE FOREST PARK','NEWCASTLE','MILTON']
-    
-    data = []
-    for i in range(1000):
-        city = np.random.choice(cities)
-        base = {'MEDINA':2500000,'BELLEVUE':1200000,'SEATTLE':850000}.get(city,550000)
-        data.append({
-            'sale_price': int(base * np.random.uniform(0.8,1.2)),
-            'city': city,
-            'sqft': int(np.random.normal(2000,500)),
-            'sqft_lot': int(np.random.normal(6000,1500)),
-            'beds': np.random.randint(2,6),
-            'bath_full': np.random.randint(1,4),
-            'grade': np.random.randint(6,11),
-            'condition': np.random.randint(2,5),
-            'year_built': np.random.randint(1970,2020),
-            'year_reno': np.random.choice([0,np.random.randint(2000,2020)], p=[0.7,0.3])
-        })
-    df = pd.DataFrame(data)
-    df.to_csv('dataset.csv',index=False)
-else:
-    df = pd.read_csv('dataset.csv')
-
-# Features
-current_year = 2024
-df['property_age'] = current_year - df['year_built']
-df['since_reno'] = df['year_reno'].apply(lambda x: current_year - x if x>0 else 0)
-df['log_sqft'] = np.log1p(df['sqft'])
-df['sqft_ratio'] = df['sqft'] / (df['sqft_lot'] + 1)
-df['total_bathrooms'] = df['bath_full'] + 0.5
-
-features = ['log_sqft','property_age','sqft_ratio','grade','condition','total_bathrooms']
-X = df[features].fillna(0)
-y = np.log1p(df['sale_price'])
-
-# Entraînement
-params = {'objective':'quantile','metric':'quantile','num_leaves':31,'learning_rate':0.05,'verbose':-1}
-train = lgb.Dataset(X, label=y)
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-# 3 modèles quantiles
-model_50 = lgb.train({**params, 'alpha':0.5}, train, num_boost_round=100)
-model_5 = lgb.train({**params, 'alpha':0.05}, train, num_boost_round=100)
-model_95 = lgb.train({**params, 'alpha':0.95}, train, num_boost_round=100)
-
-# Sauvegarde
-joblib.dump(model_50, f'models/lightgbm_q_50_{timestamp}.joblib')
-joblib.dump(model_5, f'models/lightgbm_q_5_{timestamp}.joblib')
-joblib.dump(model_95, f'models/lightgbm_q_95_{timestamp}.joblib')
-
-print(f'✅ 3 modèles entraînés - {timestamp}')
-          "
-      
-      - name: Generate predictions
-        run: |
-          python -c "
-import pandas as pd
 import numpy as np
-import joblib
-from glob import glob
-from datetime import datetime
-
-# Charger modèle
-model = joblib.load(glob('models/lightgbm_q_50_*.joblib')[0])
-df = pd.read_csv('dataset.csv')
-
-# Features
-current_year = 2024
-df['property_age'] = current_year - df['year_built']
-df['since_reno'] = df['year_reno'].apply(lambda x: current_year - x if x>0 else 0)
-df['log_sqft'] = np.log1p(df['sqft'])
-df['sqft_ratio'] = df['sqft'] / (df['sqft_lot'] + 1)
-df['total_bathrooms'] = df['bath_full'] + 0.5
-
-features = ['log_sqft','property_age','sqft_ratio','grade','condition','total_bathrooms']
-X = df[features].fillna(0)
-
-# Prédictions
-df['predicted_price'] = np.expm1(model.predict(X))
-
-# Sauvegarde
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-df.to_csv(f'predictions/predictions_{timestamp}.csv', index=False)
-print(f'✅ Prédictions: {len(df)} lignes')
+X = np.random.rand(50, 5)
+y = np.random.rand(50)
+model = lgb.LGBMRegressor(n_estimators=10)
+model.fit(X, y)
+print('✅ LightGBM OK')
           "
-      
-      - name: Export by city
-        run: |
-          python -c "
-import pandas as pd
-import os
-from glob import glob
-from datetime import datetime
-
-df = pd.read_csv(glob('predictions/predictions_*.csv')[0])
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-os.makedirs('exports/par_ville', exist_ok=True)
-
-for city in df['city'].unique():
-    city_df = df[df['city']==city]
-    city_df.to_csv(f'exports/par_ville/{city.lower()}_{timestamp}.csv', index=False)
-
-# Stats
-stats = df.groupby('city')['sale_price'].agg(['count','mean']).round(0)
-stats.to_csv(f'exports/stats_par_ville_{timestamp}.csv')
-print(f'✅ {df.city.nunique()} villes exportées')
-          "
-      
-      - name: Metrics
-        run: |
-          python -c "
-import pandas as pd
-from glob import glob
-from datetime import datetime
-
-df = pd.read_csv(glob('predictions/predictions_*.csv')[0])
-timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-mae = abs(df['sale_price'] - df['predicted_price']).mean()
-mape = (abs(df['sale_price'] - df['predicted_price']) / df['sale_price']).mean() * 100
-
-metrics = pd.DataFrame([{
-    'timestamp': timestamp,
-    'model': 'LightGBM_Quantile',
-    'mae': f'${mae:,.0f}',
-    'mape': f'{mape:.1f}%',
-    'n_cities': df['city'].nunique(),
-    'n_properties': len(df)
-}])
-metrics.to_csv(f'metrics_reports/metrics_{timestamp}.csv', index=False)
-
-print(f'📊 MAE: ${mae:,.0f}')
-print(f'📊 MAPE: {mape:.1f}%')
-          "
-      
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: house-price-models
-          path: |
-            models/*.joblib
-            predictions/*.csv
-            exports/*.csv
-            exports/par_ville/*.csv
-            metrics_reports/*.csv
-          retention-days: 15
-      
-      - name: Summary
-        run: |
-          echo "## 🏠 House Price Prediction" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **CD Pipeline terminé**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📦 **Artifacts:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 3 modèles (q5, q50, q95)" >> $GITHUB_STEP_SUMMARY
-          echo "- Prédictions complètes" >> $GITHUB_STEP_SUMMARY
-          echo "- Export 41 villes" >> $GITHUB_STEP_SUMMARY
-          echo "- Métriques de performance" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "👩‍💻 Projet par: **Bourzgui Fatima Zahra**" >> $GITHUB_STEP_SUMMARY
