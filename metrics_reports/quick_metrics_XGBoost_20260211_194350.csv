@@ -1,0 +1,2 @@
+mae,rmse,r2,mape,bias,std_errors,median_ae,max_error,model_name
+19791.2,24986.72,0.971,4.45,-1770.91,24923.89,16284.69,79827.69,XGBoost

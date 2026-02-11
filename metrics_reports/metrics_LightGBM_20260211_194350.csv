@@ -1,0 +1,2 @@
+mae,rmse,r2,mape,bias,std_errors,median_ae,max_error
+20065.31,25367.31,0.9701,4.54,-1524.54,25321.46,16691.52,83744.16

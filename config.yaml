@@ -1,75 +1,293 @@
-# Configuration du projet
+# House Price Prediction - Master Configuration
+# Version: 2.0.0
+
 project:
-  name: "washington-house-price-prediction"
-  version: "1.0.0"
+  name: "house-price-pi"
+  version: "2.0.0"
+  environment: "production"  # development, staging, production
   seed: 42
+  debug: false
 
 data:
   raw_path: "data/raw/washington_real_estate.csv"
-  processed_path: "data/processed/features.csv"
-  train_path: "data/processed/train.csv"
-  test_path: "data/processed/test.csv"
+  processed_path: "data/processed/processed_data.csv"
+  external_path: "data/external/"
   
-  features:
-    numerical: 
-      - "sqft"
-      - "sqft_lot"
-      - "beds"
-      - "bath_full"
-      - "bath_3qtr"
-      - "bath_half"
-      - "grade"
-      - "condition"
-      - "year_built"
-      - "land_val"
-      - "imp_val"
-      - "gara_sqft"
-    
-    categorical:
-      - "city"
-      - "zoning"
-      - "submarket"
-    
-    derived:
-      - "property_age"
-      - "since_reno"
-      - "imp_land_ratio"
-      - "sqft_ratio"
-      - "log_sqft"
-      - "log_price"
+  splits:
+    train_size: 0.7
+    val_size: 0.15
+    test_size: 0.15
+    stratify_by: "city"
+  
+  validation:
+    cv_folds: 5
+    shuffle: true
+    random_state: 42
 
-model:
+features:
   target: "sale_price"
-  test_size: 0.2
+  id_column: "id"
+  date_column: "sale_date"
   
-  quantiles:
-    lower: 0.05
-    upper: 0.95
+  numeric_features:
+    - "sqft"
+    - "sqft_lot"
+    - "beds"
+    - "bath_full"
+    - "bath_3qtr"
+    - "bath_half"
+    - "grade"
+    - "condition"
+    - "year_built"
+    - "latitude"
+    - "longitude"
   
-  lightgbm:
-    params:
-      n_estimators: 1000
-      learning_rate: 0.05
-      max_depth: 8
+  categorical_features:
+    - "city"
+    - "zoning"
+    - "submarket"
+    - "view_quality"
+    - "garage_type"
+  
+  derived_features:
+    - name: "property_age"
+      formula: "max(2024 - year_built, 0)"
+    - name: "since_reno"
+      formula: "max(2024 - renovate_year, 0)"
+    - name: "imp_land_ratio"
+      formula: "sqft / max(sqft_lot, 1)"
+    - name: "sqft_ratio"
+      formula: "sqft_lot / max(sqft, 1)"
+    - name: "log_sqft"
+      formula: "log1p(sqft)"
+    - name: "log_price"
+      formula: "log1p(sale_price)"
+    - name: "total_sqft"
+      formula: "sqft + basement_sqft"
+    - name: "total_bathrooms"
+      formula: "bath_full + bath_3qtr * 0.75 + bath_half * 0.5"
+    - name: "rooms_total"
+      formula: "beds + bath_full + bath_3qtr + bath_half"
+    - name: "has_garage"
+      formula: "garage_sqft > 0"
+    - name: "has_basement"
+      formula: "basement_sqft > 0"
+    - name: "is_new"
+      formula: "year_built > 2015"
+    - name: "price_per_sqft"
+      formula: "sale_price / max(sqft, 1)"
+  
+  interaction_features:
+    - ["sqft", "grade"]
+    - ["beds", "bath_full"]
+    - ["latitude", "longitude"]
+  
+  feature_selection:
+    method: "mutual_info"  # mutual_info, rfecv, l1
+    max_features: 30
+    min_importance: 0.01
+
+models:
+  quantile_regression:
+    enabled: true
+    quantiles: [0.05, 0.5, 0.95]
+    
+    lightgbm_params:
+      objective: "quantile"
+      metric: "quantile"
+      boosting_type: "gbdt"
       num_leaves: 31
+      max_depth: -1
+      learning_rate: 0.05
+      n_estimators: 1000
+      subsample: 0.8
+      subsample_freq: 1
+      colsample_bytree: 0.9
+      reg_alpha: 0.1
+      reg_lambda: 0.1
       min_child_samples: 20
+      min_child_weight: 0.001
+      min_split_gain: 0.0
+      early_stopping_rounds: 50
+      verbose: -1
+      random_state: 42
+      n_jobs: -1
+  
+  xgboost:
+    enabled: true
+    params:
+      objective: "reg:squarederror"
+      eval_metric: ["rmse", "mae"]
+      eta: 0.1
+      max_depth: 6
+      min_child_weight: 1
       subsample: 0.8
       colsample_bytree: 0.8
+      gamma: 0
+      lambda: 1
+      alpha: 0
+      n_estimators: 200
+      early_stopping_rounds: 20
       random_state: 42
-    
-    lower_quantile_params:
-      alpha: 0.05
-    
-    upper_quantile_params:
-      alpha: 0.95
+      n_jobs: -1
+  
+  random_forest:
+    enabled: true
+    params:
+      n_estimators: 200
+      max_depth: 15
+      min_samples_split: 10
+      min_samples_leaf: 5
+      max_features: "sqrt"
+      bootstrap: true
+      oob_score: true
+      random_state: 42
+      n_jobs: -1
+  
+  ensemble:
+    enabled: false
+    weights:
+      lightgbm: 0.5
+      xgboost: 0.3
+      random_forest: 0.2
 
-metrics:
-  coverage_rate: true
-  interval_width: true
-  pinball_loss: true
-  mae: true
+training:
+  device: "cpu"  # cpu, cuda, mps
+  precision: "float32"
+  gradient_accumulation_steps: 1
+  
+  callbacks:
+    early_stopping:
+      enabled: true
+      patience: 20
+      min_delta: 0.001
+    
+    model_checkpoint:
+      enabled: true
+      save_best_only: true
+      mode: "min"
+      monitor: "val_loss"
+    
+    tensorboard:
+      enabled: false
+      log_dir: "artifacts/logs/tensorboard"
 
-artifacts:
-  models_dir: "artifacts/models"
-  metrics_dir: "artifacts/metrics"
-  predictions_dir: "artifacts/predictions"
+evaluation:
+  coverage_target: 0.90  # 90% prediction interval coverage
+  
+  metrics:
+    regression:
+      - "mae"
+      - "rmse"
+      - "mape"
+      - "r2"
+      - "msle"
+      - "explained_variance"
+    
+    quantile:
+      - "coverage_rate"
+      - "interval_width"
+      - "pinball_loss"
+      - "interval_score"
+  
+  thresholds:
+    mae: 50000
+    rmse: 75000
+    mape: 15.0
+    r2: 0.85
+    coverage_rate: 0.88
+  
+  cross_validation:
+    enabled: true
+    method: "kfold"
+    n_folds: 5
+    shuffle: true
+    random_state: 42
+
+prediction:
+  batch_size: 1000
+  save_predictions: true
+  export_formats: ["csv", "excel", "parquet"]
+  
+  by_city:
+    enabled: true
+    output_dir: "artifacts/exports/par_ville"
+  
+  comparison:
+    generate_comparison: true
+    top_n_best: 10
+    top_n_worst: 10
+
+dashboard:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8501
+  theme: "light"
+  
+  pages:
+    - "home"
+    - "eda"
+    - "predictions"
+    - "model_performance"
+    - "city_analysis"
+  
+  refresh_interval: 30  # seconds
+
+logging:
+  version: 1
+  
+  formatters:
+    detailed:
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
+    
+    simple:
+      format: "%(levelname)s - %(message)s"
+  
+  handlers:
+    console:
+      class: "logging.StreamHandler"
+      level: "INFO"
+      formatter: "simple"
+      stream: "ext://sys.stdout"
+    
+    file:
+      class: "logging.handlers.RotatingFileHandler"
+      level: "DEBUG"
+      formatter: "detailed"
+      filename: "artifacts/logs/pipeline.log"
+      maxBytes: 10485760  # 10MB
+      backupCount: 5
+    
+    error_file:
+      class: "logging.handlers.RotatingFileHandler"
+      level: "ERROR"
+      formatter: "detailed"
+      filename: "artifacts/logs/error.log"
+      maxBytes: 10485760
+      backupCount: 3
+  
+  root:
+    level: "INFO"
+    handlers: ["console", "file"]
+  
+  loggers:
+    src:
+      level: "DEBUG"
+      handlers: ["console", "file"]
+      propagate: false
+    models:
+      level: "INFO"
+      handlers: ["console", "file"]
+      propagate: false
+
+paths:
+  root: "."
+  artifacts: "artifacts"
+  models: "artifacts/models"
+  metrics: "artifacts/metrics"
+  predictions: "artifacts/predictions"
+  exports: "artifacts/exports"
+  logs: "artifacts/logs"
+  notebooks: "notebooks"
+  configs: "configs"
