@@ -1,55 +1,61 @@
- name: CI - Quick Check
+ name: CD
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  check:
+  train:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
-      - name: Install
-        run: |
-          pip install pandas numpy lightgbm
+      - run: pip install pandas numpy lightgbm joblib
       
-      - name: Test dataset
-        run: |
-          if [ -f "dataset.csv" ]; then
-            echo "✅ dataset.csv trouvé"
-            python -c "import pandas as pd; df=pd.read_csv('dataset.csv'); print(f'📊 {len(df)} lignes, {df.city.nunique()} villes')"
-          else
-            echo "⚠️ Pas de dataset, création..."
-            python -c "
+      - run: |
+          python -c "
 import pandas as pd
 import numpy as np
-cities=['SEATTLE','BELLEVUE','REDMOND','KIRKLAND','RENTON']
-df=pd.DataFrame({
-    'sale_price': np.random.randint(300000, 1500000, 100),
-    'city': np.random.choice(cities, 100),
-    'sqft': np.random.randint(1000, 3500, 100),
-    'year_built': np.random.randint(1970, 2020, 100)
-})
-df.to_csv('dataset.csv', index=False)
-print('✅ dataset.csv créé')
-            "
-          fi
-      
-      - name: Test LightGBM
-        run: |
-          python -c "
 import lightgbm as lgb
-import numpy as np
-X = np.random.rand(50, 5)
-y = np.random.rand(50)
-model = lgb.LGBMRegressor(n_estimators=10)
+import joblib
+from datetime import datetime
+
+# Données
+cities = ['SEATTLE','BELLEVUE','REDMOND','KIRKLAND','RENTON']
+df = pd.DataFrame({
+    'sale_price': np.random.randint(300000, 1500000, 500),
+    'city': np.random.choice(cities, 500),
+    'sqft': np.random.randint(1000, 3500, 500),
+    'year_built': np.random.randint(1970, 2020, 500)
+})
+
+# Features
+df['age'] = 2024 - df['year_built']
+df['log_sqft'] = np.log1p(df['sqft'])
+
+# Modèle
+X = df[['log_sqft', 'age']]
+y = np.log1p(df['sale_price'])
+model = lgb.LGBMRegressor(n_estimators=50)
 model.fit(X, y)
-print('✅ LightGBM OK')
+
+# Sauvegarde
+timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+joblib.dump(model, f'model_{timestamp}.joblib')
+
+# Prédictions
+df['pred'] = np.expm1(model.predict(X))
+df.to_csv(f'predictions_{timestamp}.csv', index=False)
+
+print('✅ Modèle entraîné et prédictions sauvegardées')
           "
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-files
+          path: |
+            *.joblib
+            *.csv
