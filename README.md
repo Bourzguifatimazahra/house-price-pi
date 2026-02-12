@@ -64,85 +64,20 @@
     <tr>
       <td align="center">
         <strong>Bourzgui Fatima Zahra</strong><br/>
-        Data Scientist | Machine Learning Engineer
+        Data Analyst 
       </td>
     </tr>
   </table>
 </div>
 
 **Contact :**
-- 📧 Email : [bourzgui.fatimazahra@gmail.com](mailto:bourzgui.fatimazahra@gmail.com)
-- 🔗 LinkedIn : [Bourzgui Fatima Zahra](https://linkedin.com/in/bourzgui-fatimazahra)
-- 💻 GitHub : [@bourzgui-fatimazahra](https://github.com/bourzgui-fatimazahra)
+- 📧 Email : [bourzguifatimazahra@gmail.com](mailto:bourzguifatimazahra@gmail.com)
+- 🔗 LinkedIn : [Bourzgui Fatima Zahra](https://www.linkedin.com/in/fatimazahrabourzgui/)
+- 💻 GitHub : [@bourzguifatimazahra](https://github.com/Bourzguifatimazahra)
 - 📍 Localisation : Casablanca, Maroc
 
 ---
-
-## 🏗️ Architecture
-
-```
-house-price-pi/
-│
-├── 📁 .github/                  # CI/CD Pipeline
-│   └── 📁 workflows/
-│       ├── ⚙️ ci.yml          # Intégration continue
-│       └── ⚙️ cd.yml          # Déploiement continu
-│
-├── 📁 src/                      # Code source principal
-│   ├── 📁 data/                # Gestion des données
-│   │   ├── 📄 make_dataset.py
-│   │   └── 📄 data_generator.py
-│   │
-│   ├── 📁 features/            # Feature engineering
-│   │   ├── 📄 build_features.py
-│   │   └── 📄 transformers.py
-│   │
-│   ├── 📁 models/              # Modèles ML
-│   │   ├── 📄 train.py
-│   │   ├── 📄 predict.py
-│   │   └── 📄 quantile_trainer.py
-│   │
-│   └── 📁 evaluation/          # Métriques & évaluation
-│       ├── 📄 metrics.py
-│       └── 📄 visualizer.py
-│
-├── 📁 notebooks/               # Analyse exploratoire
-│   ├── 📓 01_eda.ipynb
-│   ├── 📓 02_feature_engineering.ipynb
-│   └── 📓 03_model_comparison.ipynb
-│
-├── 📁 dashboard/              # Application Streamlit
-│   ├── 📄 app.py
-│   └── 📁 assets/
-│
-├── 📁 artifacts/              # Sorties du pipeline
-│   ├── 📁 models/            # Modèles sauvegardés (.joblib)
-│   ├── 📁 metrics/           # Métriques CSV/JSON
-│   ├── 📁 predictions/       # Prédictions complètes
-│   ├── 📁 exports/           # Exports par ville
-│   └── 📁 logs/              # Logs d'exécution
-│
-├── 📁 data/                  # Données
-│   ├── 📁 raw/             # Données brutes
-│   └── 📁 processed/       # Données transformées
-│
-├── 📁 configs/              # Configuration
-│   └── ⚙️ config.yaml
-│
-├── 📁 tests/                # Tests unitaires
-│
-├── 📁 comparaisons/         # Comparaisons prédictions vs réel
-│
-├── 📁 metrics_reports/      # Rapports détaillés
-│
-├── 📄 pipeline_complete.py  # Pipeline principal
-├── 📄 requirements.txt      # Dépendances
-├── 📄 Makefile             # Commandes automatisées
-└── 📄 README.md           # Documentation
-```
-
----
-
+ 
 ## 🤖 Modèles Implémentés
 
 ### 📊 **Comparaison des Performances**
@@ -340,7 +275,7 @@ features_derivees = {
 
 ```bash
 # 1. Cloner le dépôt
-git clone https://github.com/bourzgui-fatimazahra/house-price-pi.git
+git clone https://github.com/Bourzguifatimazahra/house-price-pi.git
 cd house-price-pi
 
 # 2. Créer l'environnement virtuel
@@ -433,27 +368,6 @@ coverage = ModelEvaluator.calculate_coverage_rate(
 )
 print(f"✅ Coverage à 90%: {coverage:.1%}")
 ```
-
-### 📊 **Dashboard Streamlit**
-
-```bash
-# Lancer l'application interactive
-make dashboard
-# ou
-streamlit run dashboard/app.py
-```
-
-**Accès:** http://localhost:8501
-
-**Pages disponibles:**
-1. 🏠 **Accueil** - KPIs et vue d'ensemble
-2. 📈 **Analyse Exploratoire** - Distributions, corrélations
-3. 🤖 **Modèles** - Performance et comparaison
-4. 🎯 **Prédictions** - Intervalles par propriété
-5. 🗺️ **Analyse par Ville** - Cartes et statistiques
-6. 📊 **Métriques** - Évaluation détaillée
-
----
 
 ## 📈 Résultats Détaillés
 
@@ -563,49 +477,14 @@ make format
 
 ---
 
-## 📋 Roadmap
-
-### ✅ **Version 1.0 - Réalisé**
-- [x] Analyse exploratoire complète
-- [x] Feature engineering avancé
-- [x] LightGBM Quantile avec intervalles 90%
-- [x] Comparaison de 6 modèles
-- [x] Dashboard Streamlit interactif
-- [x] Export par ville et pour Power BI
-- [x] CI/CD avec GitHub Actions
-
-### 🔄 **Version 2.0 - En cours**
-- [ ] API REST avec FastAPI
-- [ ] Deep Learning (MLP, LSTM)
-- [ ] A/B testing framework
-- [ ] Monitoring en production
-- [ ] Documentation Sphinx
-
-### 📅 **Version 3.0 - Planifié**
-- [ ] Modèles temporels (Prophet, ARIMA)
-- [ ] Explicabilité avancée (SHAP, LIME)
-- [ ] Déploiement cloud (AWS/GCP)
-- [ ] Application mobile
-
----
-
 ## 📚 Documentation
 
 ### 📖 **Notebooks Jupyter**
 
 | Notebook | Description | Lien |
 |----------|-------------|------|
-| `01_eda.ipynb` | Analyse exploratoire des données | [Voir](notebooks/01_eda.ipynb) |
-| `02_feature_engineering.ipynb` | Création des features | [Voir](notebooks/02_feature_engineering.ipynb) |
-| `03_model_comparison.ipynb` | Comparaison des modèles | [Voir](notebooks/03_model_comparison.ipynb) |
-
-### 📄 **Rapports**
-
-- [Rapport de performance](artifacts/metrics/rapport_performance.pdf)
-- [Analyse des intervalles](artifacts/metrics/analyse_intervalles.pdf)
-- [Documentation technique](docs/technical_guide.pdf)
-
----
+| `01_eda.ipynb` | Analyse exploratoire des données | [Voir](01_eda.ipynb) |
+| `02_feature_engineering.ipynb` | Création des features | [Voir](02_feature_engineering.ipynb) |
 
 ## 🤝 Contribution
 
@@ -619,23 +498,9 @@ Je suis ouverte aux collaborations et suggestions pour améliorer ce projet !
 4. **Push** (`git push origin feature/amazing-feature`)
 5. **Ouvrir une Pull Request**
 
-### 📋 **Standards de Code**
-
-- Suivre PEP 8
-- Docstrings pour toutes les fonctions
-- Tests unitaires pour les nouvelles fonctionnalités
-- Coverage minimum de 80%
-
----
-
-## 📄 License
-
-Ce projet est sous licence **MIT** - voir le fichier [LICENSE](LICENSE) pour plus de détails.
-
 ```
-MIT License
 
-Copyright (c) 2024 Bourzgui Fatima Zahra
+Copyright (c) 2026 Bourzgui Fatima Zahra
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files...
@@ -681,25 +546,14 @@ Je tiens à remercier :
   <table>
     <tr>
       <td align="center">
-        <a href="mailto:bourzgui.fatimazahra@gmail.com">
+        <a href="mailto:bourzguifatimazahra@gmail.com">
           <img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white"/>
-        </a>
-      </td>
-      <td align="center">
-        <a href="https://linkedin.com/in/bourzgui-fatimazahra">
-          <img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white"/>
-        </a>
-      </td>
-      <td align="center">
-        <a href="https://github.com/bourzgui-fatimazahra">
-          <img src="https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white"/>
-        </a>
-      </td>
+        </a></td>
     </tr>
   </table>
 </div>
 
-**Bourzgui Fatima Zahra** - *Data Scientist & Machine Learning Engineer*
+**Bourzgui Fatima Zahra**
 
 ---
 
@@ -711,7 +565,7 @@ Je tiens à remercier :
     Développé avec ❤️ par Bourzgui Fatima Zahra
   </p>
   <p>
-    <sub>© 2024 House Price Prediction Interval. Tous droits réservés.</sub>
+    <sub>© 2026 House Price Prediction Interval. Tous droits réservés.</sub>
   </p>
 </div>
 
