@@ -73,7 +73,7 @@
 **Contact :**
 - 📧 Email : [bourzguifatimazahra@gmail.com](mailto:bourzguifatimazahra@gmail.com)
 - 🔗 LinkedIn : [Bourzgui Fatima Zahra](https://www.linkedin.com/in/fatimazahrabourzgui/)
-- 💻 GitHub : [@bourzguifatimazahra](https://github.com/Bourzguifatimazahra)
+- 💻 GitHub : [@Bourzguifatimazahra](https://github.com/Bourzguifatimazahra)
 - 📍 Localisation : Casablanca, Maroc
 
 ---
@@ -404,32 +404,6 @@ print(f"✅ Coverage à 90%: {coverage:.1%}")
 9.  sqft_lot        ██            18.9%
 10. imp_land_ratio  █             12.4%
 ```
-
----
-
-## 🖼️ Visualisations
-
-<div align="center">
-  <table>
-    <tr>
-      <td align="center"><b>Distribution des Prix</b></td>
-      <td align="center"><b>Matrice de Corrélation</b></td>
-    </tr>
-    <tr>
-      <td><img src="artifacts/price_distribution.png" width="400"/></td>
-      <td><img src="artifacts/correlation_matrix.png" width="400"/></td>
-    </tr>
-    <tr>
-      <td align="center"><b>Intervalles de Prédiction</b></td>
-      <td align="center"><b>Analyse par Ville</b></td>
-    </tr>
-    <tr>
-      <td><img src="artifacts/prediction_intervals.png" width="400"/></td>
-      <td><img src="artifacts/city_analysis.png" width="400"/></td>
-    </tr>
-  </table>
-</div>
-
 ---
 
 ## 🔬 Analyse Approfondie
