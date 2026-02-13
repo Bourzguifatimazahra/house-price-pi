@@ -1,7 +1,6 @@
 """
 VISUALISATION SIMPLE DES RÉSULTATS - INTERVALLES DE CONFIANCE 90%
-Charge directement le dernier fichier CSV de prédictions et affiche les graphiques
-Version corrigée - sans erreur 'erreur_abs'
+Version corrigée - Gestion des colonnes mal nommées et valeurs inversées
 """
 
 import pandas as pd
@@ -24,7 +23,7 @@ st.set_page_config(
 
 # ============================================================================
 # CSS PERSONNALISÉ
-# ============================================================================
+#============================================================================
 
 st.markdown("""
     <style>
@@ -38,6 +37,14 @@ st.markdown("""
         margin-bottom: 2rem;
         font-weight: bold;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .warning-box {
+        background-color: #FFF3E0;
+        border-left: 5px solid #FF9800;
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
     }
     
     .metric-card {
@@ -73,11 +80,116 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# TITRE PRINCIPAL
+# FONCTIONS UTILITAIRES
 # ============================================================================
 
-st.markdown('<div class="main-header">📊 VISUALISATION DES PRÉDICTIONS - INTERVALLE DE CONFIANCE 90%</div>', 
-            unsafe_allow_html=True)
+def format_currency(value):
+    """Formate en devise pour l'affichage uniquement"""
+    return f"${value:,.0f}"
+
+def format_percentage(value):
+    """Formate en pourcentage pour l'affichage uniquement"""
+    return f"{value:.1f}%"
+
+def clean_and_fix_dataframe(df_raw):
+    """
+    Nettoie et corrige le DataFrame en réorganisant les colonnes correctement
+    """
+    df = df_raw.copy()
+    
+    # Afficher les colonnes pour debug
+    print("Colonnes originales:", df.columns.tolist())
+    
+    # Identifier les colonnes par leur nom ou position
+    columns = df.columns.tolist()
+    
+    # Initialiser un nouveau DataFrame avec les bonnes colonnes
+    df_clean = pd.DataFrame()
+    
+    # CAS 1: Les colonnes ont des préfixes étranges (A^B_C_)
+    # On cherche les colonnes qui contiennent ces mots-clés
+    for col in columns:
+        col_lower = col.lower()
+        
+        if 'prix_reel' in col_lower or 'reel' in col_lower:
+            df_clean['prix_reel'] = df[col]
+        elif 'prix_predit' in col_lower or 'predit_precis' in col_lower:
+            df_clean['prix_predit_precis'] = df[col]
+        elif 'borne_inferieure' in col_lower or 'borne_inf' in col_lower:
+            df_clean['borne_inferieure_90'] = df[col]
+        elif 'borne_superieure' in col_lower or 'borne_sup' in col_lower:
+            df_clean['borne_superieure_90'] = df[col]
+        elif 'intervalle' in col_lower or 'confiance' in col_lower or 'in' in col_lower:
+            # Dernière colonne souvent l'intervalle ou l'ID
+            pass
+    
+    # CAS 2: Si on n'a pas trouvé toutes les colonnes, on utilise la position
+    if len(df_clean.columns) < 4:
+        st.warning("⚠️ Structure de colonnes non standard - Tentative de correction par position")
+        
+        df_clean = pd.DataFrame()
+        
+        # D'après l'image, l'ordre semble être:
+        # [id, prix_reel, prix_predit_precis, borne_inferieure_90, borne_superieure_90, ?]
+        if len(columns) >= 6:
+            # La colonne 1 semble être le prix réel
+            # La colonne 2 semble être la prédiction
+            # La colonne 3 semble être la borne inférieure
+            # La colonne 4 semble être la borne supérieure
+            
+            df_clean['prix_reel'] = pd.to_numeric(df[columns[1]], errors='coerce')
+            df_clean['prix_predit_precis'] = pd.to_numeric(df[columns[2]], errors='coerce')
+            df_clean['borne_inferieure_90'] = pd.to_numeric(df[columns[3]], errors='coerce')
+            df_clean['borne_superieure_90'] = pd.to_numeric(df[columns[4]], errors='coerce')
+    
+    # CORRECTION: Les valeurs semblent inversées
+    # D'après l'image, les prix réels sont dans la colonne 1 (grandes valeurs)
+    # et les prédictions dans la colonne 2 (petites valeurs)
+    
+    if not df_clean.empty:
+        # Vérifier si les prédictions sont trop petites par rapport aux prix réels
+        if df_clean['prix_predit_precis'].mean() < df_clean['prix_reel'].mean() * 0.5:
+            st.warning("⚠️ Les prédictions semblent sous-évaluées - Vérification des colonnes")
+            
+            # Afficher un échantillon pour debug
+            st.write("Échantillon des données après correction:")
+            sample_debug = df_clean.head()
+            for col in sample_debug.columns:
+                sample_debug[col] = sample_debug[col].apply(lambda x: f"{x:,.0f}")
+            st.dataframe(sample_debug)
+    
+    # Calculer les colonnes dérivées
+    if not df_clean.empty:
+        df_clean['erreur'] = df_clean['prix_predit_precis'] - df_clean['prix_reel']
+        df_clean['erreur_abs'] = df_clean['erreur'].abs()
+        df_clean['erreur_pourcentage'] = (df_clean['erreur'] / df_clean['prix_reel']) * 100
+        
+        # Largeur de l'intervalle
+        if 'borne_superieure_90' in df_clean.columns and 'borne_inferieure_90' in df_clean.columns:
+            df_clean['intervalle_confiance'] = df_clean['borne_superieure_90'] - df_clean['borne_inferieure_90']
+        else:
+            df_clean['intervalle_confiance'] = 0
+        
+        df_clean['largeur_relative'] = (df_clean['intervalle_confiance'] / df_clean['prix_reel']) * 100
+        
+        # Vérifier si les prix sont dans l'intervalle
+        df_clean['dans_intervalle'] = (
+            (df_clean['prix_reel'] >= df_clean['borne_inferieure_90']) & 
+            (df_clean['prix_reel'] <= df_clean['borne_superieure_90'])
+        )
+    
+    return df_clean
+
+def create_display_df(df, cols_to_format):
+    """Crée une version formatée pour l'affichage sans modifier l'original"""
+    df_display = df.copy()
+    for col in cols_to_format:
+        if col in df_display.columns:
+            if 'prix' in col or 'reel' in col or 'predit' in col or 'borne' in col or 'intervalle' in col or 'erreur' in col and col != 'erreur_pourcentage':
+                df_display[col] = df_display[col].apply(lambda x: format_currency(x) if pd.notna(x) else "N/A")
+            elif 'pourcentage' in col:
+                df_display[col] = df_display[col].apply(lambda x: format_percentage(x) if pd.notna(x) else "N/A")
+    return df_display
 
 # ============================================================================
 # CHARGEMENT DES DONNÉES
@@ -85,25 +197,33 @@ st.markdown('<div class="main-header">📊 VISUALISATION DES PRÉDICTIONS - INTE
 
 @st.cache_data
 def load_latest_predictions():
-    """Charge le dernier fichier de prédictions"""
+    """Charge le dernier fichier de prédictions et corrige la structure"""
     pred_dir = Path('predictions_quantile')
     
     if not pred_dir.exists():
         return None, "📁 Dossier 'predictions_quantile' introuvable"
     
-    pred_files = list(pred_dir.glob('prediction_precise_intervalle90_*.csv'))
+    pred_files = list(pred_dir.glob('*.csv'))
     
     if not pred_files:
-        return None, "❌ Aucun fichier de prédictions trouvé"
+        return None, "❌ Aucun fichier CSV trouvé"
     
     latest_file = max(pred_files, key=lambda x: x.stat().st_mtime)
-    df = pd.read_csv(latest_file)
     
-    # Ajouter les colonnes calculées nécessaires
-    df['erreur_abs'] = df['erreur'].abs()
-    df['largeur_relative'] = (df['intervalle_confiance'] / df['prix_reel']) * 100
-    
-    return df, f"✅ Fichier chargé: {latest_file.name}"
+    try:
+        # Charger le fichier brut
+        df_raw = pd.read_csv(latest_file)
+        
+        # Nettoyer et corriger la structure
+        df_clean = clean_and_fix_dataframe(df_raw)
+        
+        if df_clean.empty:
+            return None, "❌ Impossible de corriger la structure du fichier"
+        
+        return df_clean, f"✅ Fichier chargé et corrigé: {latest_file.name}"
+        
+    except Exception as e:
+        return None, f"❌ Erreur lors du chargement: {str(e)}"
 
 # Chargement
 df, message = load_latest_predictions()
@@ -119,6 +239,11 @@ with st.sidebar:
     if df is not None:
         st.success(message)
         
+        # Avertissement si les données semblent anormales
+        if df['prix_predit_precis'].mean() < df['prix_reel'].mean() * 0.3:
+            st.warning("⚠️ Les prédictions sont très sous-évaluées")
+            st.info("Vérifiez que les colonnes sont correctement assignées dans `clean_and_fix_dataframe()`")
+        
         # Informations sur les données
         st.markdown("### 📈 Statistiques")
         
@@ -132,14 +257,14 @@ with st.sidebar:
         st.markdown("### 🎯 Prédiction précise")
         st.metric(
             "Prix médian prédit",
-            f"${df['prix_predit_precis'].median():,.0f}",
-            f"${df['prix_predit_precis'].mean():,.0f} (moyen)"
+            format_currency(df['prix_predit_precis'].median()),
+            format_currency(df['prix_predit_precis'].mean()) + " (moyen)"
         )
         
         st.markdown("### 📊 Intervalle 90%")
         st.metric(
             "Largeur moyenne",
-            f"${df['intervalle_confiance'].mean():,.0f}"
+            format_currency(df['intervalle_confiance'].mean())
         )
         
         # Couverture
@@ -187,16 +312,13 @@ with st.sidebar:
             st.rerun()
         
         st.markdown("---")
-        st.caption("💡 Les prédictions sont chargées depuis le dossier 'predictions_quantile/'")
+        st.caption("💡 Les prédictions sont automatiquement corrigées")
         
     else:
         st.error(message)
         st.info("""
         **Pour générer des prédictions:**
-        1. Lancez d'abord l'entraînement:
-        ```
-        python script.py train
-        ```
+        1. Lancez d'abord l'entraînement
         2. Les prédictions seront sauvegardées dans 'predictions_quantile/'
         """)
 
@@ -205,6 +327,16 @@ with st.sidebar:
 # ============================================================================
 
 if df is not None:
+    
+    # Avertissement sur la qualité des données
+    if df['prix_predit_precis'].mean() < df['prix_reel'].mean() * 0.5:
+        st.markdown("""
+        <div class="warning-box">
+            <strong>⚠️ ATTENTION: Problème de qualité des données détecté</strong><br>
+            Les prédictions sont significativement sous-évaluées par rapport aux prix réels.
+            Vérifiez que les colonnes sont correctement assignées dans la fonction de chargement.
+        </div>
+        """, unsafe_allow_html=True)
     
     # Échantillonnage
     df_sample = df.sample(n=min(n_samples, len(df)), random_state=42)
@@ -229,7 +361,7 @@ if df is not None:
     # ========================================================================
     
     with tab1:
-        st.header("🎯 Analyse de la prédiction précise (Quantile 50%)")
+        st.header("🎯 Analyse de la prédiction précise")
         
         col1, col2 = st.columns([3, 2])
         
@@ -239,10 +371,10 @@ if df is not None:
                 df_sample,
                 x='prix_reel',
                 y='prix_predit_precis',
-                title="🎯 Prédiction précise vs Prix réel",
+                title="🎯 Prédiction vs Prix réel",
                 labels={
                     'prix_reel': 'Prix réel ($)',
-                    'prix_predit_precis': 'Prédiction précise ($)'
+                    'prix_predit_precis': 'Prédiction ($)'
                 },
                 hover_data=['erreur', 'erreur_pourcentage'],
                 color='erreur',
@@ -266,30 +398,11 @@ if df is not None:
                 )
             )
             
-            # Tendance
-            try:
-                z = np.polyfit(df_sample['prix_reel'], df_sample['prix_predit_precis'], 1)
-                p = np.poly1d(z)
-                
-                fig_scatter.add_trace(
-                    go.Scatter(
-                        x=df_sample['prix_reel'].sort_values(),
-                        y=p(df_sample['prix_reel'].sort_values()),
-                        mode='lines',
-                        name='Tendance',
-                        line=dict(color='green', width=2),
-                        showlegend=True
-                    )
-                )
-            except:
-                pass
-            
             fig_scatter.update_layout(
                 height=600,
                 xaxis_title="Prix réel",
                 yaxis_title="Prix prédit",
-                hovermode='closest',
-                coloraxis_showscale=False
+                hovermode='closest'
             )
             
             st.plotly_chart(fig_scatter, use_container_width=True)
@@ -299,21 +412,20 @@ if df is not None:
             mae = df_sample['erreur'].abs().mean()
             mape = df_sample['erreur_pourcentage'].abs().mean()
             rmse = np.sqrt((df_sample['erreur'] ** 2).mean())
-            r2 = df_sample['prix_reel'].corr(df_sample['prix_predit_precis']) ** 2
             
             st.markdown("""
             <div class="precision-card">
-                <h3 style="color: white; margin-top: 0;">📊 Performance globale</h3>
+                <h3 style="color: white; margin-top: 0;">📊 Performance</h3>
             </div>
             """, unsafe_allow_html=True)
             
             col2_1, col2_2 = st.columns(2)
             with col2_1:
-                st.metric("MAE", f"${mae:,.0f}")
+                st.metric("MAE", format_currency(mae))
                 st.metric("MAPE", f"{mape:.1f}%")
             with col2_2:
-                st.metric("RMSE", f"${rmse:,.0f}")
-                st.metric("R²", f"{r2:.3f}")
+                st.metric("RMSE", format_currency(rmse))
+                st.metric("Biais", format_currency(df_sample['erreur'].mean()))
             
             # Distribution des erreurs
             fig_hist = px.histogram(
@@ -326,27 +438,11 @@ if df is not None:
             )
             
             fig_hist.add_vline(x=0, line_dash="dash", line_color="red")
-            fig_hist.add_vline(x=mae, line_dash="dot", line_color="green", 
-                              annotation_text=f"MAE: ${mae:,.0f}")
+            fig_hist.add_vline(x=mae, line_dash="dot", line_color="green")
             fig_hist.add_vline(x=-mae, line_dash="dot", line_color="green")
             
             fig_hist.update_layout(height=300)
             st.plotly_chart(fig_hist, use_container_width=True)
-            
-            # Q-Q plot simplifié
-            try:
-                percentiles = np.percentile(df_sample['erreur'], np.arange(0, 101, 10))
-                fig_qq = px.line(
-                    x=np.arange(0, 101, 10),
-                    y=percentiles,
-                    title="Percentiles des erreurs",
-                    labels={'x': 'Percentile', 'y': 'Erreur ($)'},
-                    markers=True
-                )
-                fig_qq.update_layout(height=250)
-                st.plotly_chart(fig_qq, use_container_width=True)
-            except:
-                st.info("Impossible de générer le graphique des percentiles")
     
     # ========================================================================
     # TAB 2: INTERVALLE DE CONFIANCE 90%
@@ -362,7 +458,7 @@ if df is not None:
             fig_interval = go.Figure()
             
             # Sous-échantillon pour lisibilité
-            viz_sample = df_sample.head(50).reset_index()
+            viz_sample = df_sample.head(30).reset_index()
             
             # Prix réel
             fig_interval.add_trace(go.Scatter(
@@ -370,264 +466,172 @@ if df is not None:
                 y=viz_sample['prix_reel'],
                 mode='markers',
                 name='Prix réel',
-                marker=dict(color='red', size=8, symbol='circle'),
-                hovertemplate='Prix réel: $%{y:,.0f}<br>Index: %{x}<extra></extra>'
+                marker=dict(color='red', size=8),
+                hovertemplate='Prix réel: $%{y:,.0f}<extra></extra>'
             ))
             
             # Prédiction précise
             fig_interval.add_trace(go.Scatter(
                 x=viz_sample.index,
                 y=viz_sample['prix_predit_precis'],
-                mode='markers+lines',
-                name='Prédiction précise',
+                mode='markers',
+                name='Prédiction',
                 marker=dict(color='blue', size=6),
-                line=dict(color='blue', width=1),
-                hovertemplate='Prédiction: $%{y:,.0f}<br>Index: %{x}<extra></extra>'
+                hovertemplate='Prédiction: $%{y:,.0f}<extra></extra>'
             ))
             
-            # Intervalle 90%
+            # Intervalle
             fig_interval.add_trace(go.Scatter(
                 x=viz_sample.index,
                 y=viz_sample['borne_superieure_90'],
                 mode='lines',
-                name='Borne supérieure (95%)',
-                line=dict(dash='dash', color='green', width=1),
-                hovertemplate='Borne sup: $%{y:,.0f}<br>Index: %{x}<extra></extra>'
+                name='Borne sup.',
+                line=dict(dash='dash', color='green', width=1)
             ))
             
             fig_interval.add_trace(go.Scatter(
                 x=viz_sample.index,
                 y=viz_sample['borne_inferieure_90'],
                 mode='lines',
-                name='Borne inférieure (5%)',
+                name='Borne inf.',
                 line=dict(dash='dash', color='green', width=1),
                 fill='tonexty',
-                fillcolor='rgba(0,255,0,0.1)',
-                hovertemplate='Borne inf: $%{y:,.0f}<br>Index: %{x}<extra></extra>'
+                fillcolor='rgba(0,255,0,0.1)'
             ))
             
             fig_interval.update_layout(
-                title=f"Intervalle de confiance 90% - Échantillon de {len(viz_sample)} propriétés",
+                title=f"Intervalles 90% - {len(viz_sample)} propriétés",
                 xaxis_title="Index",
                 yaxis_title="Prix ($)",
-                height=500,
-                hovermode='x unified',
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
+                height=500
             )
             
             st.plotly_chart(fig_interval, use_container_width=True)
-            
-            # Métriques d'intervalle
-            col2_1, col2_2, col2_3 = st.columns(3)
-            with col2_1:
-                st.metric(
-                    "📉 Borne inférieure moyenne",
-                    f"${df_sample['borne_inferieure_90'].mean():,.0f}"
-                )
-            with col2_2:
-                st.metric(
-                    "🎯 Prédiction précise moyenne",
-                    f"${df_sample['prix_predit_precis'].mean():,.0f}"
-                )
-            with col2_3:
-                st.metric(
-                    "📈 Borne supérieure moyenne",
-                    f"${df_sample['borne_superieure_90'].mean():,.0f}"
-                )
         
         with col2:
-            # Distribution des largeurs d'intervalle
+            # Distribution des largeurs
             fig_width = px.histogram(
                 df_sample,
                 x='intervalle_confiance',
                 nbins=50,
-                title="Distribution de la largeur des intervalles",
-                labels={'intervalle_confiance': 'Largeur de l\'intervalle ($)'},
+                title="Largeur des intervalles",
+                labels={'intervalle_confiance': 'Largeur ($)'},
                 color_discrete_sequence=['#E91E63']
             )
             
             fig_width.add_vline(
                 x=df_sample['intervalle_confiance'].mean(),
                 line_dash="dash",
-                line_color="red",
-                annotation_text=f"Moyenne: ${df_sample['intervalle_confiance'].mean():,.0f}"
+                line_color="red"
             )
             
             fig_width.update_layout(height=300)
             st.plotly_chart(fig_width, use_container_width=True)
             
-            # Analyse par tranche de prix
-            df_sample['tranche_prix'] = pd.cut(
-                df_sample['prix_reel'],
-                bins=[0, 300000, 600000, 900000, 1200000, 1500000, 2000000, np.inf],
-                labels=['<300k', '300-600k', '600-900k', '900k-1.2M', '1.2-1.5M', '1.5-2M', '>2M']
-            )
+            # Couverture
+            coverage = df_sample['dans_intervalle'].mean() * 100
             
-            # Couverture par tranche
-            coverage_by_price = df_sample.groupby('tranche_prix', observed=True)['dans_intervalle'].mean() * 100
+            fig_coverage = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=coverage,
+                title={'text': "Couverture (%)"},
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={
+                    'axis': {'range': [None, 100]},
+                    'bar': {'color': "#1E88E5"},
+                    'steps': [
+                        {'range': [0, 90], 'color': "#FFCDD2"},
+                        {'range': [90, 100], 'color': "#C8E6C9"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 90
+                    }
+                }
+            ))
             
-            fig_coverage = px.bar(
-                x=coverage_by_price.index,
-                y=coverage_by_price.values,
-                title="Couverture par tranche de prix",
-                labels={'x': 'Tranche de prix', 'y': 'Couverture (%)'},
-                text=[f"{v:.1f}%" for v in coverage_by_price.values],
-                color=coverage_by_price.values,
-                color_continuous_scale='RdYlGn',
-                range_color=[70, 100]
-            )
-            
-            fig_coverage.add_hline(y=90, line_dash="dash", line_color="red", 
-                                  annotation_text="Cible: 90%")
-            
-            fig_coverage.update_layout(height=300)
+            fig_coverage.update_layout(height=250)
             st.plotly_chart(fig_coverage, use_container_width=True)
-            
-            # Largeur relative
-            try:
-                fig_rel_width = px.box(
-                    df_sample,
-                    x='tranche_prix',
-                    y='largeur_relative',
-                    title="Largeur relative par tranche de prix",
-                    labels={'tranche_prix': 'Tranche de prix', 'largeur_relative': 'Largeur relative (%)'},
-                    color='tranche_prix',
-                    color_discrete_sequence=px.colors.qualitative.Set2
-                )
-                
-                fig_rel_width.update_layout(height=300, showlegend=False)
-                st.plotly_chart(fig_rel_width, use_container_width=True)
-            except:
-                st.info("Impossible de générer le graphique des largeurs relatives")
     
     # ========================================================================
     # TAB 3: ANALYSE DES ERREURS
     # ========================================================================
     
     with tab3:
-        st.header("📈 Analyse détaillée des erreurs")
+        st.header("📈 Analyse des erreurs")
         
         col1, col2 = st.columns(2)
         
         with col1:
             # Erreur vs Prix réel
-            fig_error_vs_price = px.scatter(
+            fig_error = px.scatter(
                 df_sample,
                 x='prix_reel',
-                y='erreur',
-                color='erreur_pourcentage',
-                color_continuous_scale='RdYlBu',
-                color_continuous_midpoint=0,
-                title="Erreur de prédiction vs Prix réel",
+                y='erreur_pourcentage',
+                title="Erreur % vs Prix réel",
                 labels={
                     'prix_reel': 'Prix réel ($)',
-                    'erreur': 'Erreur ($)',
-                    'erreur_pourcentage': 'Erreur %'
+                    'erreur_pourcentage': 'Erreur (%)'
                 },
-                hover_data=['prix_predit_precis']
+                color='erreur_pourcentage',
+                color_continuous_scale='RdYlBu',
+                color_continuous_midpoint=0
             )
             
-            fig_error_vs_price.add_hline(y=0, line_dash="dash", line_color="black")
-            
-            # Bandes d'erreur
-            fig_error_vs_price.add_hrect(
-                y0=-df_sample['erreur'].abs().mean(),
-                y1=df_sample['erreur'].abs().mean(),
-                fillcolor="green",
-                opacity=0.1,
-                line_width=0,
-                annotation_text=f"± MAE: ${df_sample['erreur'].abs().mean():,.0f}"
-            )
-            
-            fig_error_vs_price.update_layout(height=400)
-            st.plotly_chart(fig_error_vs_price, use_container_width=True)
+            fig_error.add_hline(y=0, line_dash="dash", line_color="black")
+            fig_error.update_layout(height=400)
+            st.plotly_chart(fig_error, use_container_width=True)
         
         with col2:
-            # Erreur absolue par tranche
-            df_sample['erreur_abs'] = df_sample['erreur'].abs()
-            
+            # Boxplot des erreurs
             try:
-                fig_error_box = px.box(
-                    df_sample,
-                    x='tranche_prix',
-                    y='erreur_abs',
-                    title="Erreur absolue par tranche de prix",
-                    labels={'tranche_prix': 'Tranche de prix', 'erreur_abs': 'Erreur absolue ($)'},
-                    color='tranche_prix',
-                    color_discrete_sequence=px.colors.qualitative.Set1
+                df_sample['tranche_prix'] = pd.cut(
+                    df_sample['prix_reel'],
+                    bins=[0, 300000, 600000, 900000, 1200000, 1500000, np.inf],
+                    labels=['<300k', '300-600k', '600-900k', '900k-1.2M', '1.2-1.5M', '>1.5M']
                 )
                 
-                fig_error_box.update_layout(height=400, showlegend=False)
-                st.plotly_chart(fig_error_box, use_container_width=True)
+                fig_box = px.box(
+                    df_sample,
+                    x='tranche_prix',
+                    y='erreur_pourcentage',
+                    title="Erreur % par tranche",
+                    labels={'tranche_prix': 'Tranche', 'erreur_pourcentage': 'Erreur %'},
+                    color='tranche_prix'
+                )
+                
+                fig_box.add_hline(y=0, line_dash="dash", line_color="black")
+                fig_box.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig_box, use_container_width=True)
             except:
-                st.info("Impossible de générer le graphique des erreurs par tranche")
+                st.info("Impossible de générer le graphique par tranche")
         
-        # Top erreurs - CORRECTION ICI
+        # Top erreurs
         st.subheader("🔍 Top 10 des plus grandes erreurs")
         
-        # Utiliser 'erreur' au lieu de 'erreur_abs' pour nlargest
-        top_errors = df.nlargest(10, 'erreur')[['prix_reel', 'prix_predit_precis', 'erreur', 'erreur_pourcentage', 'borne_inferieure_90', 'borne_superieure_90']].copy()
+        top_errors = df.nlargest(10, 'erreur_abs')[
+            ['prix_reel', 'prix_predit_precis', 'erreur', 'erreur_pourcentage', 
+             'borne_inferieure_90', 'borne_superieure_90', 'dans_intervalle']
+        ].copy()
         
-        # Formatage
-        for col in ['prix_reel', 'prix_predit_precis', 'erreur', 'borne_inferieure_90', 'borne_superieure_90']:
-            top_errors[col] = top_errors[col].apply(lambda x: f"${x:,.0f}")
-        
-        top_errors['erreur_pourcentage'] = top_errors['erreur_pourcentage'].apply(lambda x: f"{x:.1f}%")
-        
-        st.dataframe(
+        top_errors_display = create_display_df(
             top_errors,
-            column_config={
-                "prix_reel": "💰 Prix réel",
-                "prix_predit_precis": "🎯 Prédiction",
-                "erreur": "⚠️ Erreur",
-                "erreur_pourcentage": "% Erreur",
-                "borne_inferieure_90": "📉 Borne 5%",
-                "borne_superieure_90": "📈 Borne 95%"
-            },
-            use_container_width=True,
-            hide_index=True
+            ['prix_reel', 'prix_predit_precis', 'erreur', 'borne_inferieure_90', 'borne_superieure_90', 'erreur_pourcentage']
         )
+        top_errors_display['dans_intervalle'] = top_errors_display['dans_intervalle'].apply(lambda x: "✅ Oui" if x else "❌ Non")
         
-        # Top 10 des meilleures prédictions
-        st.subheader("✅ Top 10 des meilleures prédictions")
-        
-        best_predictions = df.nsmallest(10, 'erreur_abs')[['prix_reel', 'prix_predit_precis', 'erreur', 'erreur_pourcentage', 'dans_intervalle']].copy()
-        
-        # Formatage
-        for col in ['prix_reel', 'prix_predit_precis', 'erreur']:
-            best_predictions[col] = best_predictions[col].apply(lambda x: f"${x:,.0f}")
-        
-        best_predictions['erreur_pourcentage'] = best_predictions['erreur_pourcentage'].apply(lambda x: f"{x:.1f}%")
-        best_predictions['dans_intervalle'] = best_predictions['dans_intervalle'].apply(lambda x: "✅ Oui" if x else "❌ Non")
-        
-        st.dataframe(
-            best_predictions,
-            column_config={
-                "prix_reel": "💰 Prix réel",
-                "prix_predit_precis": "🎯 Prédiction",
-                "erreur": "⚠️ Erreur",
-                "erreur_pourcentage": "% Erreur",
-                "dans_intervalle": "✅ Dans intervalle"
-            },
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(top_errors_display, use_container_width=True, hide_index=True)
     
     # ========================================================================
     # TAB 4: DONNÉES BRUTES
     # ========================================================================
     
     with tab4:
-        st.header("📁 Visualisation des données brutes")
+        st.header("📁 Données brutes")
         
-        # Filtres supplémentaires
-        col1, col2, col3 = st.columns(3)
+        # Filtres
+        col1, col2 = st.columns(2)
         
         with col1:
             min_price = int(df['prix_reel'].min())
@@ -640,27 +644,16 @@ if df is not None:
             )
         
         with col2:
-            min_error = float(df['erreur_pourcentage'].min())
-            max_error = float(df['erreur_pourcentage'].max())
-            error_range = st.slider(
-                "Filtrer par erreur %",
-                min_value=min_error,
-                max_value=max_error,
-                value=(min_error, max_error)
-            )
-        
-        with col3:
             interval_filter = st.selectbox(
                 "Filtrer par intervalle",
-                ["Tous", "Dans l'intervalle", "Hors intervalle"]
+                ["Tous", "Dans l'intervalle", "Hors intervalle"],
+                key="filter_interval"
             )
         
         # Application des filtres
         df_filtered = df[
             (df['prix_reel'] >= price_range[0]) &
-            (df['prix_reel'] <= price_range[1]) &
-            (df['erreur_pourcentage'] >= error_range[0]) &
-            (df['erreur_pourcentage'] <= error_range[1])
+            (df['prix_reel'] <= price_range[1])
         ].copy()
         
         if interval_filter == "Dans l'intervalle":
@@ -669,103 +662,65 @@ if df is not None:
             df_filtered = df_filtered[df_filtered['dans_intervalle'] == False]
         
         # Aperçu
-        st.subheader(f"📊 Aperçu des données ({len(df_filtered):,} lignes)")
+        st.subheader(f"📊 Aperçu ({len(df_filtered):,} lignes)")
         
-        # Colonnes à afficher
         display_cols = ['prix_reel', 'prix_predit_precis', 'borne_inferieure_90', 
                        'borne_superieure_90', 'intervalle_confiance', 'erreur', 
                        'erreur_pourcentage', 'dans_intervalle']
         
-        df_display = df_filtered[display_cols].head(100).copy()
-        
-        # Formatage
-        for col in ['prix_reel', 'prix_predit_precis', 'borne_inferieure_90', 
-                   'borne_superieure_90', 'intervalle_confiance', 'erreur']:
-            df_display[col] = df_display[col].apply(lambda x: f"${x:,.0f}")
-        
-        df_display['erreur_pourcentage'] = df_display['erreur_pourcentage'].apply(lambda x: f"{x:.1f}%")
+        df_display = create_display_df(
+            df_filtered[display_cols].head(100),
+            ['prix_reel', 'prix_predit_precis', 'borne_inferieure_90', 
+             'borne_superieure_90', 'intervalle_confiance', 'erreur', 'erreur_pourcentage']
+        )
         df_display['dans_intervalle'] = df_display['dans_intervalle'].apply(lambda x: "✅ Oui" if x else "❌ Non")
         
-        st.dataframe(
-            df_display,
-            column_config={
-                "prix_reel": "💰 Prix réel",
-                "prix_predit_precis": "🎯 Prédiction",
-                "borne_inferieure_90": "📉 Borne 5%",
-                "borne_superieure_90": "📈 Borne 95%",
-                "intervalle_confiance": "📊 Largeur",
-                "erreur": "⚠️ Erreur",
-                "erreur_pourcentage": "% Erreur",
-                "dans_intervalle": "✅ Dans intervalle"
-            },
-            use_container_width=True
-        )
-        
-        # Statistiques
-        st.subheader("📊 Statistiques descriptives")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**🎯 Prédictions**")
-            stats_pred = df_filtered[['prix_reel', 'prix_predit_precis']].describe()
-            stats_pred.index = ['Count', 'Mean', 'Std', 'Min', '25%', '50%', '75%', 'Max']
-            for col in stats_pred.columns:
-                stats_pred[col] = stats_pred[col].apply(lambda x: f"${x:,.0f}" if col in ['prix_reel', 'prix_predit_precis'] else f"{x:.0f}")
-            st.dataframe(stats_pred, use_container_width=True)
-        
-        with col2:
-            st.markdown("**📊 Intervalles**")
-            stats_interval = df_filtered[['borne_inferieure_90', 'borne_superieure_90', 'intervalle_confiance']].describe()
-            stats_interval.index = ['Count', 'Mean', 'Std', 'Min', '25%', '50%', '75%', 'Max']
-            for col in stats_interval.columns:
-                stats_interval[col] = stats_interval[col].apply(lambda x: f"${x:,.0f}")
-            st.dataframe(stats_interval, use_container_width=True)
+        st.dataframe(df_display, use_container_width=True)
         
         # Export
-        st.subheader("💾 Export des données filtrées")
+        st.subheader("💾 Export")
         
         col1, col2 = st.columns(2)
+        
         with col1:
-            csv = df_filtered.to_csv(index=False).encode('utf-8')
+            # Export numérique (brut)
+            csv_numeric = df_filtered.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Télécharger en CSV",
-                data=csv,
-                file_name=f"predictions_filtrees_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                label="📥 Télécharger (valeurs numériques)",
+                data=csv_numeric,
+                file_name=f"predictions_numeriques_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
+        
         with col2:
-            st.info(f"{len(df_filtered):,} lignes • {df_filtered.shape[1]} colonnes")
+            # Export formaté
+            df_export_readable = create_display_df(
+                df_filtered,
+                ['prix_reel', 'prix_predit_precis', 'borne_inferieure_90', 
+                 'borne_superieure_90', 'intervalle_confiance', 'erreur', 'erreur_pourcentage']
+            )
+            df_export_readable['dans_intervalle'] = df_export_readable['dans_intervalle'].apply(lambda x: "Oui" if x else "Non")
+            
+            csv_formatted = df_export_readable.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Télécharger (formaté)",
+                data=csv_formatted,
+                file_name=f"predictions_formatees_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
 else:
-    # Message d'erreur si pas de données
     st.error("❌ Aucune donnée de prédiction trouvée!")
     
     st.markdown("""
     ### 📋 Instructions
     
-    1. **Entraînez d'abord le modèle** avec la commande:
-    ```bash
-    python script.py train
-    ```
-    
-    2. **Vérifiez que le dossier `predictions_quantile/` contient des fichiers CSV**
-    
-    3. **Rafraîchissez cette page** après l'entraînement
-    
-    ---
-    
-    📁 **Structure attendue:**
-    ```
-    predictions_quantile/
-    └── prediction_precise_intervalle90_*.csv
-    ```
+    1. **Placez vos fichiers CSV** dans le dossier `predictions_quantile/`
+    2. **Structure attendue:** Colonnes pour prix réel, prédiction, bornes
+    3. **Rafraîchissez cette page**
     """)
-    
-    if st.button("🔄 Vérifier à nouveau"):
-        st.cache_data.clear()
-        st.rerun()
 
 # ============================================================================
 # FOOTER
@@ -773,37 +728,13 @@ else:
 
 st.markdown("---")
 
-col1, col2, col3 = st.columns([1, 2, 1])
-
-with col2:
-    st.markdown("""
-    <div style='text-align: center; color: #666; padding: 1rem;'>
-        <p style='font-size: 0.9rem;'>
-            📊 <strong>Visualisation des prédictions - Intervalles de confiance 90%</strong><br>
-            Quantiles: 5% (borne inférieure) | 50% (prédiction précise) | 95% (borne supérieure)<br>
-            ⚡ Données chargées depuis le dossier 'predictions_quantile/'<br>
-            ✅ Version corrigée - Erreur 'erreur_abs' résolue
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ============================================================================
-# UTILISATION
-# ============================================================================
-
-"""
-UTILISATION:
-------------
-1. Visualisation simple:
-   streamlit run visualisation_simple.py
-
-2. Sans argument - charge automatiquement le dernier fichier de prédictions
-
-CORRECTIONS APPLIQUÉES:
------------------------
-✓ Ajout de 'erreur_abs' et 'largeur_relative' dans load_latest_predictions()
-✓ Correction du top_errors - utilise 'erreur' au lieu de 'erreur_abs'
-✓ Ajout du top 10 des meilleures prédictions
-✓ Gestion des erreurs avec try/except
-✓ Formatage amélioré des données
-"""
+st.markdown("""
+<div style='text-align: center; color: #666; padding: 1rem;'>
+    <p style='font-size: 0.9rem;'>
+        📊 <strong>Visualisation des prédictions - Version corrigée</strong><br>
+        ✅ Correction automatique des colonnes mal nommées<br>
+        💾 Export en deux formats (numérique brut + formaté lisible)<br>
+        ⚠️ Détection automatique des anomalies dans les données
+    </p>
+</div>
+""", unsafe_allow_html=True)

@@ -1,0 +1,56 @@
+# EXPORT DES PRÉDICTIONS - KING COUNTY REAL ESTATE
+Date d'export: 2026-02-13 03:09:10
+
+## FICHIERS GÉNÉRÉS
+
+1. **predictions_completes_20260213_030910.csv**
+   - Toutes les propriétés avec toutes les caractéristiques
+   - Prix réels et prédits
+   - Métriques d'erreur complètes
+
+2. **par_ville/***
+   - Fichiers séparés par ville
+   - Format: [ville]_predictions_20260213_030910.csv
+
+3. **statistiques_globales_20260213_030910.csv**
+   - Résumé global des performances
+   - Métriques principales
+
+4. **statistiques_par_ville_20260213_030910.csv**
+   - Performances détaillées par ville
+
+5. **meilleures_predictions_20260213_030910.csv**
+   - Top 20 des prédictions les plus précises
+
+6. **pires_predictions_20260213_030910.csv**
+   - Top 20 des prédictions les moins précises
+
+7. **predictions_light_20260213_030910.csv**
+   - Version allégée pour analyse rapide
+
+## MÉTRIQUES GLOBALES
+- Total propriétés: 2,000
+- Erreur moyenne: $269,942
+- Erreur % moyenne: 45.0%
+- Précision moyenne: 55.0%
+- R²: 0.772
+
+## STRUCTURE DES COLONNES
+
+### Colonnes communes:
+- property_id: Identifiant unique
+- city: Ville
+- sale_date: Date de vente
+- sqft, sqft_lot: Superficies
+- beds, baths: Chambres et salles de bain
+- grade, condition: Notes de qualité
+- year_built: Année de construction
+- actual_price: Prix réel de vente
+- predicted_price: Prix prédit
+- price_difference: Différence (prédit - réel)
+- abs_difference: Différence absolue
+- error_percentage: Erreur en pourcentage
+- prediction_quality: Qualité de la prédiction (Excellent/Bon/Moyen/Faible)
+
+---
+Généré automatiquement par le système de prédiction King County Real Estate
